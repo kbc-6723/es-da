@@ -1,26 +1,10 @@
 # Time Matter in Using Data Augmentation in Vision-Based Reinforcement Learning
 
 We modified the Procgen (https://github.com/openai/procgen) to verify each generalization about change of backgrounds and levels.
+
 Our data augmentation methods are from RAD(https://github.com/pokaxpoka/rad_procgen) and Auto-DrAC (https://github.com/rraileanu/auto-drac).
 
 ## Modified Procgen
-
-
-Supported platforms:
-
-- Windows 10
-- macOS 10.14 (Mojave), 10.15 (Catalina)
-- Linux (manylinux2010)
-
-Supported Pythons:
-
-- 3.6 64-bit
-- 3.7 64-bit
-- 3.8 64-bit
-
-Supported CPUs:
-
-- Must have at least AVX
 
 Required Libraries
 
@@ -46,5 +30,7 @@ python -c "from procgen import ProcgenGym3Env; ProcgenGym3Env(num=1, env_name='c
 # this should create a window where you can play the coinrun environment
 python -m procgen.interactive
 ```
-
-
+## InDA
+python -m procgen.InDA --env_name climber --distribution_mode easybg --num_levels 200 --data_aug random_conv --run_id 'file_name' --log_dir 'your_path'
+## ExDA
+python -m procgen.ExDA --env_name climber --distribution_mode easybg --num_levels 200 --res_id 'pre-trained-model-path' --data_aug random_conv --run_id 'file_name' --log_dir 'your_path'
