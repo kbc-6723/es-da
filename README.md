@@ -34,3 +34,5 @@ python -m procgen.interactive
 python -m procgen.InDA --env_name climber --distribution_mode easybg --num_levels 200 --data_aug random_conv --run_id 'file_name' --log_dir 'your_path'
 ## ExDA
 python -m procgen.ExDA --env_name climber --distribution_mode easybg --num_levels 200 --res_id 'pre-trained-model-path' --data_aug random_conv --run_id 'file_name' --log_dir 'your_path'
+
+Anonymous github can be cloned as https://github.com/ShoufaChen/clone-anonymous4open.
