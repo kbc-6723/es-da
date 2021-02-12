@@ -1,6 +1,8 @@
 #include "../basic-abstract-game.h"
 #include "../mazegen.h"
 
+const std::string NAME = "maze";
+
 const float REWARD = 10.0;
 
 const int GOAL = 2;
@@ -8,10 +10,11 @@ const int GOAL = 2;
 class MazeGame : public BasicAbstractGame {
   public:
     std::shared_ptr<MazeGen> maze_gen;
-    int maze_dim, world_dim;
+    int maze_dim = 0;
+    int world_dim = 0;
 
     MazeGame()
-        : BasicAbstractGame() {
+        : BasicAbstractGame(NAME) {
         timeout = 500;
         random_agent_start = false;
         has_useful_vel_info = false;
@@ -21,10 +24,15 @@ class MazeGame : public BasicAbstractGame {
     }
 
     void load_background_images() override {
-        main_bg_images_ptr = &topdown_backgrounds;
+        if (options.distribution_mode == Easybg_testMode){
+            main_bg_images_ptr = &topdown_backgrounds_test;
+        } else{
+            main_bg_images_ptr = &topdown_backgrounds;
+        }
+        
     }
 
-    void asset_for_type(int type, std::vector<QString> &names) override {
+    void asset_for_type(int type, std::vector<std::string> &names) override {
         if (type == WALL_OBJ) {
             names.push_back("kenney/Ground/Sand/sandCenter.png");
         } else if (type == GOAL) {
@@ -37,7 +45,7 @@ class MazeGame : public BasicAbstractGame {
     void choose_world_dim() override {
         int dist_diff = options.distribution_mode;
 
-        if (dist_diff == EasyMode) {
+        if (dist_diff == EasyMode || dist_diff == EasybgMode || dist_diff == Easybg_testMode) {
             world_dim = 15;
         } else if (dist_diff == HardMode) {
             world_dim = 25;
@@ -59,9 +67,11 @@ class MazeGame : public BasicAbstractGame {
 
         std::shared_ptr<MazeGen> _maze_gen(new MazeGen(&rand_gen, maze_dim));
         maze_gen = _maze_gen;
-
+        
         options.center_agent = options.distribution_mode == MemoryMode;
-
+        if (options.distribution_mode == EasybgMode){
+            background_index = 0;
+        }
         agent->rx = .5;
         agent->ry = .5;
         agent->x = margin + .5;
@@ -118,6 +128,18 @@ class MazeGame : public BasicAbstractGame {
 
         step_data.done = step_data.reward > 0;
     }
+
+    void serialize(WriteBuffer *b) override {
+        BasicAbstractGame::serialize(b);
+        b->write_int(maze_dim);
+        b->write_int(world_dim);
+    }
+
+    void deserialize(ReadBuffer *b) override {
+        BasicAbstractGame::deserialize(b);
+        maze_dim = b->read_int();
+        world_dim = b->read_int();
+    }
 };
 
-REGISTER_GAME("maze", MazeGame);
+REGISTER_GAME(NAME, MazeGame);

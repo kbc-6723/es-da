@@ -6,6 +6,8 @@
 #include <queue>
 #include <memory>
 
+const std::string NAME = "jumper";
+
 const float GOAL_REWARD = 10.0f;
 
 const int GOAL = 1;
@@ -27,22 +29,31 @@ const int NUM_WALL_THEMES = 4;
 class Jumper : public BasicAbstractGame {
   public:
     std::shared_ptr<Entity> goal;
-    int jump_count, jump_delta, jump_time;
-    bool has_support, facing_right;
-    int wall_theme;
-    float compass_dim;
+    int jump_count = 0;
+    int jump_delta = 0;
+    int jump_time = 0;
+    bool has_support = false;
+    bool facing_right = false;
+    int wall_theme = 0;
+    float compass_dim = 0.0f;
     std::unique_ptr<RoomGenerator> room_manager;
 
     Jumper()
-        : BasicAbstractGame() {
+        : BasicAbstractGame(NAME) {
         room_manager = std::make_unique<RoomGenerator>(this);
     }
 
     void load_background_images() override {
-        main_bg_images_ptr = &platform_backgrounds;
+        if(options.distribution_mode == Easybg_testMode){
+            main_bg_images_ptr = &platform_backgrounds_test;
+        } else if (options.distribution_mode == Easy_testMode){
+            main_bg_images_ptr = &topdown_backgrounds;
+        } else{
+            main_bg_images_ptr = &platform_backgrounds;
+        }
     }
 
-    void asset_for_type(int type, std::vector<QString> &names) override {
+    void asset_for_type(int type, std::vector<std::string> &names) override {
         if (type == PLAYER) {
             names.push_back("misc_assets/bunny2_ready.png");
         } else if (type == SPIKE) {
@@ -201,7 +212,7 @@ class Jumper : public BasicAbstractGame {
 
         int world_dim = 20;
 
-        if (dist_diff == EasyMode) {
+        if (dist_diff == EasyMode || dist_diff == EasybgMode || dist_diff == Easybg_testMode || dist_diff == Easy_testMode) {
             world_dim = 20;
         } else if (dist_diff == HardMode) {
             world_dim = 40;
@@ -214,7 +225,7 @@ class Jumper : public BasicAbstractGame {
     }
 
     void game_reset() override {
-        if (options.distribution_mode == EasyMode) {
+        if (options.distribution_mode == EasyMode || options.distribution_mode == EasybgMode || options.distribution_mode == Easybg_testMode || options.distribution_mode == Easy_testMode) {
             visibility = 12;
             compass_dim = 3;
         } else {
@@ -229,8 +240,17 @@ class Jumper : public BasicAbstractGame {
         BasicAbstractGame::game_reset();
 
         out_of_bounds_object = WALL_OBJ;
-
-        wall_theme = rand_gen.randn(NUM_WALL_THEMES);
+        
+        if (options.distribution_mode == EasybgMode) {           
+            wall_theme = 0;
+            background_index = 0;
+        } else if(options.distribution_mode == Easybg_testMode){
+            wall_theme = 0;
+        } else{
+            wall_theme = rand_gen.randn(NUM_WALL_THEMES);
+        }
+        
+        
         jump_count = 0;
         jump_delta = 0;
         jump_time = 0;
@@ -435,6 +455,32 @@ class Jumper : public BasicAbstractGame {
             agent->vy -= 0.15f;
         }
     }
+
+    void serialize(WriteBuffer *b) override {
+        BasicAbstractGame::serialize(b);
+        b->write_int(jump_count);
+        b->write_int(jump_delta);
+        b->write_int(jump_time);
+        b->write_bool(has_support);
+        b->write_bool(facing_right);
+        b->write_int(wall_theme);
+        b->write_float(compass_dim);
+    }
+
+    void deserialize(ReadBuffer *b) override {
+        BasicAbstractGame::deserialize(b);
+        jump_count = b->read_int();
+        jump_delta = b->read_int();
+        jump_time = b->read_int();
+        has_support = b->read_bool();
+        facing_right = b->read_bool();
+        wall_theme = b->read_int();
+        compass_dim = b->read_float();
+
+        int goal_idx = find_entity_index(GOAL);
+        fassert(goal_idx >= 0);
+        goal = entities[goal_idx];
+    }
 };
 
-REGISTER_GAME("jumper", Jumper);
+REGISTER_GAME(NAME, Jumper);

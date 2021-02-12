@@ -4,23 +4,25 @@ import numpy as np
 import os.path as osp
 from baselines import logger
 from collections import deque
+import procgen.data_augs as rad
 from baselines.common import explained_variance, set_global_seeds
-from procgen.policy_new import build_policy
-import matplotlib.pyplot as plt
+from procgen.policies import build_policy
 try:
     from mpi4py import MPI
 except ImportError:
     MPI = None
-from baselines.ppo2.runner import Runner
-
+from procgen.runner import Runner
+import matplotlib.pyplot as plt
 import tensorflow as tf
+import torch
 def constfn(val):
     def f(_):
         return val
     return f
 DIR_NAME = 'train_log'
-def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2048, ent_coef=0.0, lr=3e-4, id = None,
-            vf_coef=0.5,  max_grad_norm=0.5, gamma=0.99, lam=0.95,
+
+    
+def learn(*, network, stu_network=None, env, total_timesteps, eval_env = None, seed=None, nsteps=2048, ent_coef=0.0, lr=3e-4, run_id = None, vf_coef=0.5,  max_grad_norm=0.5, gamma=0.99, lam=0.95,args, 
             log_interval=10, nminibatches=4, noptepochs=4, cliprange=0.2,
             save_interval=0, load_path=None, model_fn=None, update_fn=None, init_fn=None, mpi_rank_weight=1, comm=None, **network_kwargs):
     '''
@@ -66,15 +68,21 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
     
     if not os.path.exists(DIR_NAME):
         os.makedirs(DIR_NAME)
-    file_name_gradient = '%s/%s.txt'%(DIR_NAME, id + "gradient")
-    file_name_loss = '%s/%s.txt'%(DIR_NAME, id + "loss")
-    file_name_netsize = '%s/%s.txt'%(DIR_NAME, id + "netsize")
+    '''
+    file_name_gradient = '%s/%s.txt'%(DIR_NAME, run_id + "gradient")
+    file_name_loss = '%s/%s.txt'%(DIR_NAME, run_id + "loss")
+    file_name_netsize = '%s/%s.txt'%(DIR_NAME, run_id + "netsize")
     f_gradient = open(file_name_gradient, 'a')
     f_loss = open(file_name_loss, 'a')
     f_netsize = open(file_name_netsize, 'a')
-    
-    policy = build_policy(env, network, **network_kwargs)
-
+    '''
+    if args.use_rand_FM:
+        policy = build_policy(env, network, stu_network, **network_kwargs)
+    elif args.use_drac:
+        policy = build_policy(env, network, network, use_drac = True, **network_kwargs)
+    else:
+        policy = build_policy(env, network, **network_kwargs)
+        
     # Get the nb of env
     nenvs = env.num_envs
 
@@ -91,21 +99,19 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
     if model_fn is None:
         from procgen.model import Model
         model_fn = Model
-
+    
     model = model_fn(policy=policy, ob_space=ob_space, ac_space=ac_space, nbatch_act=nenvs, nbatch_train=nbatch_train,
-                    nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef,
+                    nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef, args = args,
                     max_grad_norm=max_grad_norm, comm=comm, mpi_rank_weight=mpi_rank_weight)
 
     variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
-    '''
-    print(comm.Get_rank())
     for v in variables:
             print(v.name)
-    '''
     if load_path is not None:
-        load_path = '/home/postech/procgen/checkpoints/' + load_path
+        load_path = args.log_dir + 'checkpoints/' + load_path
         model.load(load_path)
     # Instantiate the runner object
+
     runner = Runner(env=env, model=model, nsteps=nsteps, gamma=gamma, lam=lam)
     if eval_env is not None:
         eval_runner = Runner(env = eval_env, model = model, nsteps = nsteps, gamma = gamma, lam= lam)
@@ -116,27 +122,43 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
 
     if init_fn is not None:
         init_fn()
- 
+    if args.use_rad:
+        p_rand = 0.5
+    else:
+        p_rand = 1
     # Start total timer
+    if args.data_aug is not None:
+        if args.data_aug == 'color_jitter':
+            aug_func = rad.ColorJitterLayer(nbatch, p_rand = p_rand)
+        elif args.data_aug == 'gray':
+            aug_func = rad.Grayscale(nbatch, p_rand = p_rand)
+        elif args.data_aug == 'flip':
+            aug_func = rad.Rand_Flip(nbatch, p_rand = p_rand)    
+        elif args.data_aug == 'rotate':
+            aug_func = rad.Rand_Rotate(nbatch, p_rand = p_rand)    
+        elif args.data_aug == 'crop':
+            aug_func = rad.Crop(nbatch, p_rand = p_rand)
+        elif args.data_aug == 'cutout':
+            aug_func = rad.Cutout(nbatch, p_rand = p_rand)
+        elif args.data_aug == 'cutout_color':
+            aug_func = rad.Cutout_Color(nbatch, p_rand = p_rand)
+        elif args.data_aug == 'random_conv':
+            if args.use_rad is False:
+                aug_func = rad.RandomConv(nbatch)
+        else:
+            pass
+            
     tfirststart = time.perf_counter()
     
-    checkpoint = list(range(0,26,1))
+    checkpoint = list(range(0,args.timesteps + 1,1))
     check_index = 0
     saved_key_checkpoints = [False] * len(checkpoint)
 
     nupdates = total_timesteps//nbatch
-    
-    saved_key_checkpoints[check_index] = True
-    checkdir = osp.join(logger.get_dir(), 'checkpoints')
-    os.makedirs(checkdir, exist_ok=True)
-            
-    savepath = osp.join(checkdir, '%i'%checkpoint[check_index]) if id == None else osp.join(checkdir, id+'%i'%checkpoint[check_index])
-    print('Saving to', savepath)
-    model.save(savepath)
-    check_index =  check_index + 1
     for update in range(1, nupdates+1):
-        
         assert nbatch % nminibatches == 0
+            
+        
         # Start timer
         tstart = time.perf_counter()
         frac = 1.0 - (update - 1.0) / nupdates
@@ -146,12 +168,25 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
         cliprangenow = cliprange(frac)
 
         if update % log_interval == 0 and is_mpi_root: logger.info('Stepping environment...')
-
+        
         # Get minibatch
+       
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run() #pylint: disable=E0632
         
+        if args.use_rad and args.data_aug != 'random_conv':
+            obs = aug_func.do_augmentation(obs)
+            
+        if args.use_drac:
+            aug_obs = aug_func.do_augmentation(obs)
+
+    
+        # Returns = R + yV(s')
+        advs = returns - values
+        # Normalize the advantages
+        advs = (advs - advs.mean()) / (advs.std() + 1e-8)
+        advs = np.mean(advs, axis = 0)
         if eval_env is not None:
-            eval_obs, eval_returns, eval_masks, eval_actions, eval_values, eval_neglogpacs, eval_states, eval_epinfos = eval_runner.run() #pylint: disable=E0632
+            eval_epinfos = eval_runner.eval() #pylint: disable=E0632
 
         if update % log_interval == 0 and is_mpi_root: logger.info('Done.')
 
@@ -175,27 +210,19 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
                     end = start + nbatch_train
                     mbinds = inds[start:end]
                     '''
-                    if  update*nbatch >= (checkpoint[check_index] * 1e6) and is_mpi_root and (not saved_key_checkpoints[check_index]):
+                    if  update*nbatch >= (checkpoint[check_index] * 1e6) and logger.get_dir() and is_mpi_root and (not saved_key_checkpoints[check_index]):
                         slices = (arr[mbinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
                         gradient.append(model.grad(lrnow, cliprangenow, *slices))
                     '''    
-                    slices = (arr[mbinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
-                    mblossvals.append(model.train(lrnow, cliprangenow, *slices))
-        else: # recurrent version          
-            assert nenvs % nminibatches == 0
-            envsperbatch = nenvs // nminibatches
-            envinds = np.arange(nenvs)
-            flatinds = np.arange(nenvs * nsteps).reshape(nenvs, nsteps)
-            for _ in range(noptepochs):
-                np.random.shuffle(envinds)
-                for start in range(0, nenvs, envsperbatch):
-                    end = start + envsperbatch
-                    mbenvinds = envinds[start:end]
-                    mbflatinds = flatinds[mbenvinds].ravel()
-                    slices = (arr[mbflatinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
-                    mbstates = states[mbenvinds]
-                    
-                    mblossvals.append(model.train(lrnow, cliprangenow, *slices, mbstates))
+                  
+                    if args.use_drac:
+                        slices = (arr[mbinds] for arr in (obs, aug_obs, returns, masks, actions, values, neglogpacs))
+                        mblossvals.append(model.train_drac(lrnow, cliprangenow, *slices))
+                    else:    
+                        slices = (arr[mbinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
+                        mblossvals.append(model.train(lrnow, cliprangenow, *slices))
+        else: # recurrent version
+            print("Not implenmented yet")
 
         # Feedforward --> get losses --> update
         lossvals = np.mean(mblossvals, axis=0)
@@ -211,21 +238,27 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
             # Calculates if value function is a good predicator of the returns (ev > 1)
             # or if it's just worse than predicting nothing (ev =< 0)
             mean_reward = safemean([epinfo['r'] for epinfo in epinfobuf])
-            ev = explained_variance(values, returns)
+            
             logger.logkv("misc/serial_timesteps", update*nsteps)
             logger.logkv("misc/nupdates", update)
             logger.logkv("misc/total_timesteps", update*nbatch)
             logger.logkv("fps", fps)
-            logger.logkv("misc/explained_variance", float(ev))
+            
+            logger.logkv('advantage', advs)
+            logger.logkv("misc/explained_variance", float(explained_variance(values, returns)))
+            for (lossval, lossname) in zip(lossvals, model.loss_names):
+                logger.logkv('loss/' + lossname, lossval)
             logger.logkv('eprewmean', mean_reward)
             logger.logkv('eplenmean', safemean([epinfo['l'] for epinfo in epinfobuf]))
             if eval_env is not None:
-                logger.logkv('eval_eprewmean', safemean([epinfo['r'] for epinfo in eval_epinfobuf]) )
-                logger.logkv('eval_eplenmean', safemean([epinfo['l'] for epinfo in eval_epinfobuf]) )
+                logger.logkv('stu_eprewmean', safemean([epinfo['r'] for epinfo in eval_epinfobuf]) )
+                logger.logkv('stu_eplenmean', safemean([epinfo['l'] for epinfo in eval_epinfobuf]) )
             logger.logkv('misc/time_elapsed', tnow - tfirststart)
             
-            if  update*nbatch >= (checkpoint[check_index] * 1e6) and (not saved_key_checkpoints[check_index]) and is_mpi_root:
-                f_gradient.write("{}\n".format(safemean(gradient)))
+                
+            '''    
+            if  update*nbatch >= (checkpoint[check_index] * 1e6) and (not saved_key_checkpoints[check_index]):
+                f_gradient.write("{}\n".format(lossvals[-1]))
                 f_gradient.flush()  
                 for (lossval, lossname) in zip(lossvals, model.loss_names):
                     if lossname =='loss':
@@ -238,21 +271,23 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
             else:
                 for (lossval, lossname) in zip(lossvals, model.loss_names):
                     logger.logkv('loss/' + lossname, lossval)
-           
+            '''
             logger.dumpkvs()
 
-        if  update*nbatch >= (checkpoint[check_index] * 1e6) and logger.get_dir() and is_mpi_root and (not saved_key_checkpoints[check_index]):
+        if  update*nbatch >= ((checkpoint[check_index]) * 1e6) and logger.get_dir() and is_mpi_root and (not saved_key_checkpoints[check_index]):
             saved_key_checkpoints[check_index] = True
             checkdir = osp.join(logger.get_dir(), 'checkpoints')
             os.makedirs(checkdir, exist_ok=True)
-            
-            savepath = osp.join(checkdir, '%i'%(checkpoint[check_index] + 26)) if id == None else osp.join(checkdir, id+'%i'%(checkpoint[check_index] + 26))
+            ind = checkpoint[check_index]
+            savepath = osp.join(checkdir, '%i'%checkpoint[check_index]) if run_id == None else osp.join(checkdir, run_id+'%i'%ind)
             print('Saving to', savepath)
             model.save(savepath)
             check_index =  check_index + 1
+    '''
     f_gradient.close()
     f_loss.close()
     f_netsize.close()
+    '''
     return model
 # Avoid division error when calculate the mean (in our case if epinfo is empty returns np.nan, not return an error)
 def safemean(xs):

@@ -5,6 +5,10 @@ import os
 import functools
 import collections
 import multiprocessing
+from skimage.transform import resize
+
+
+
 
 def switch(condition, then_expression, else_expression):
     """Switches between two operations depending on a scalar value (int or bool).
@@ -89,6 +93,7 @@ def initialize():
     new_variables = set(tf.global_variables()) - ALREADY_INITIALIZED
     get_session().run(tf.variables_initializer(new_variables))
     ALREADY_INITIALIZED.update(new_variables)
+
 
 # ================================================================
 # Model components
@@ -368,71 +373,14 @@ def load_variables(load_path, variables=None, sess=None):
     else:
         for v in variables:
             #print(v.name)
-            if 'Adam' in v.name:
+            if 'Adam' in v.name or 'beta' in v.name:
               continue
             restores.append(v.assign(loaded_params[v.name])) # except target_pi
     sess.run(restores)
-def load_variables_a2c(load_path, variables=None, sess=None):
-    import joblib
-    sess = sess or get_session()
-    variables = variables or tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
 
-    loaded_params = joblib.load(os.path.expanduser(load_path))
-    restores = []
-    if isinstance(loaded_params, list):
-        assert len(loaded_params) == len(variables), 'number of variables loaded mismatches len(variables)'
-        for d, v in zip(loaded_params, variables):
-            restores.append(v.assign(d))
-    else:
-        for v in variables:
-            #print(v.name)
-            if 'Adam' in v.name or 'ppo' in v.name:
-              continue
-            restores.append(v.assign(loaded_params[v.name])) # except target_pi
-    sess.run(restores)    
-    
-    
-def load_variables_new(load_path, variables=None, sess=None):
-    import joblib
-    sess = sess or get_session()
-    variables = variables or tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
 
-    loaded_params = joblib.load(os.path.expanduser(load_path))
-    restores = []
-    if isinstance(loaded_params, list):
-        assert len(loaded_params) == len(variables), 'number of variables loaded mismatches len(variables)'
-        for d, v in zip(loaded_params, variables):
-            restores.append(v.assign(d))
-    else:
-        for v in variables:
-            print(v.name)
-            if 'new' in v.name or 'beta' in v.name:
-              continue
-            restores.append(v.assign(loaded_params[v.name])) # except target_pi
             
 
-    sess.run(restores)
-    
-def load_variables_sample(load_path, variables=None, sess=None):
-    import joblib
-    sess = sess or get_session()
-    variables = variables or tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
-
-    loaded_params = joblib.load(os.path.expanduser(load_path))
-    restores = []
-    if isinstance(loaded_params, list):
-        assert len(loaded_params) == len(variables), 'number of variables loaded mismatches len(variables)'
-        for d, v in zip(loaded_params, variables):
-            restores.append(v.assign(d))
-    else:
-        for v in variables:
-#            print(v.name)
-            if 'new' in v.name or 'target' in v.name or 'sample' in v.name:
-              continue
-            restores.append(v.assign(loaded_params[v.name])) # except target_pi
-            
-
-    sess.run(restores)
 # ================================================================
 # Shape adjustment for feeding into tf placeholders
 # ================================================================

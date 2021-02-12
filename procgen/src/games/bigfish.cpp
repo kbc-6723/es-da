@@ -3,6 +3,8 @@
 #include <set>
 #include <queue>
 
+const std::string NAME = "bigfish";
+
 const int COMPLETION_BONUS = 10.0f;
 const int POSITIVE_REWARD = 1.0f;
 
@@ -15,11 +17,11 @@ const int FISH_QUOTA = 30;
 
 class BigFish : public BasicAbstractGame {
   public:
-    int fish_eaten;
-    float r_inc;
+    int fish_eaten = 0;
+    float r_inc = 0.0;
 
     BigFish()
-        : BasicAbstractGame() {
+        : BasicAbstractGame(NAME) {
         timeout = 6000;
 
         main_width = 20;
@@ -27,10 +29,16 @@ class BigFish : public BasicAbstractGame {
     }
 
     void load_background_images() override {
-        main_bg_images_ptr = &water_backgrounds;
+        if (options.distribution_mode == Easybg_testMode) {
+            main_bg_images_ptr = &water_backgrounds_test;
+        }
+        else{
+            main_bg_images_ptr = &water_backgrounds;
+        }  
+        
     }
 
-    void asset_for_type(int type, std::vector<QString> &names) override {
+    void asset_for_type(int type, std::vector<std::string> &names) override {
         if (type == PLAYER) {
             names.push_back("misc_assets/fishTile_072.png");
         } else if (type == FISH) {
@@ -63,11 +71,14 @@ class BigFish : public BasicAbstractGame {
         fish_eaten = 0;
 
         float start_r = .5;
-
-        if (options.distribution_mode == EasyMode) {
+        
+        if (options.distribution_mode == EasyMode || options.distribution_mode == EasybgMode || options.distribution_mode == Easybg_testMode){
             start_r = 1;
         }
-
+        if ( options.distribution_mode == EasybgMode){
+            background_index = 0;
+        }
+                
         r_inc = (FISH_MAX_R - start_r) / FISH_QUOTA;
 
         agent->rx = start_r;
@@ -102,6 +113,18 @@ class BigFish : public BasicAbstractGame {
         if (action_vx < 0)
             agent->is_reflected = true;
     }
+
+    void serialize(WriteBuffer *b) override {
+        BasicAbstractGame::serialize(b);
+        b->write_int(fish_eaten);
+        b->write_float(r_inc);
+    }
+
+    void deserialize(ReadBuffer *b) override {
+        BasicAbstractGame::deserialize(b);
+        fish_eaten = b->read_int();
+        r_inc = b->read_float();
+    }
 };
 
-REGISTER_GAME("bigfish", BigFish);
+REGISTER_GAME(NAME, BigFish);

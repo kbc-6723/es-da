@@ -1,6 +1,8 @@
 #include "../basic-abstract-game.h"
 #include "../qt-utils.h"
 
+const std::string NAME = "leaper";
+
 const int LOG = 1;
 const int ROAD = 2;
 const int WATER = 3;
@@ -24,33 +26,37 @@ float sign(float x) {
 
 class LeaperGame : public BasicAbstractGame {
   public:
-    int bottom_road_y;
+    int bottom_road_y = 0;
     std::vector<float> road_lane_speeds;
-    int bottom_water_y;
+    int bottom_water_y = 0;
     std::vector<float> water_lane_speeds;
-    int goal_y;
+    int goal_y = 0;
 
     LeaperGame()
-        : BasicAbstractGame() {
+        : BasicAbstractGame(NAME) {
         maxspeed = MAX_SPEED;
         timeout = 500;
     }
 
     void load_background_images() override {
-        main_bg_images_ptr = &topdown_backgrounds;
+        if (options.distribution_mode == Easybg_testMode){
+            main_bg_images_ptr = &topdown_backgrounds_test;
+        } else{
+            main_bg_images_ptr = &topdown_backgrounds;
+        }
     }
 
-    void asset_for_type(int type, std::vector<QString> &names) override {
+    void asset_for_type(int type, std::vector<std::string> &names) override {
         if (type == ROAD) {
             names.push_back("misc_assets/roadTile6b.png");
         } else if (type == WATER) {
             names.push_back("misc_assets/terrainTile6.png");
         } else if (type == CAR) {
+            names.push_back("misc_assets/car_yellow_5.png");
             names.push_back("misc_assets/car_black_1.png");
             names.push_back("misc_assets/car_blue_2.png");
             names.push_back("misc_assets/car_green_3.png");
             names.push_back("misc_assets/car_red_4.png");
-            names.push_back("misc_assets/car_yellow_5.png");
         } else if (type == LOG) {
             names.push_back("misc_assets/elementWood044.png");
         } else if (type == PLAYER) {
@@ -86,6 +92,10 @@ class LeaperGame : public BasicAbstractGame {
         return type == WATER || type == ROAD;
     }
 
+    bool should_preserve_type_themes(int type) override {
+        return type == PLAYER;
+    }
+
     float rand_sign() {
         if (rand_gen.rand01() < 0.5) {
             return 1.0;
@@ -99,7 +109,7 @@ class LeaperGame : public BasicAbstractGame {
 
         int world_dim = 20;
 
-        if (dist_diff == EasyMode) {
+        if (dist_diff == EasyMode || dist_diff == EasybgMode || dist_diff == Easybg_testMode) {
             world_dim = 9;
         } else if (dist_diff == HardMode) {
             world_dim = 15;
@@ -110,7 +120,7 @@ class LeaperGame : public BasicAbstractGame {
     }
 
     int choose_extra_space() {
-        return options.distribution_mode == EasyMode ? 0 : rand_gen.randn(2);
+        return (options.distribution_mode == EasyMode || options.distribution_mode == EasybgMode || options.distribution_mode == Easybg_testMode) ? 0 : rand_gen.randn(2);
     }
 
     void game_reset() override {
@@ -125,7 +135,7 @@ class LeaperGame : public BasicAbstractGame {
         float min_log_speed = 0.05f;
         float max_log_speed = 0.1f;
 
-        if (options.distribution_mode == EasyMode) {
+        if (options.distribution_mode == EasyMode || options.distribution_mode == EasybgMode || options.distribution_mode == Easybg_testMode) {
             min_car_speed = 0.03f;
             max_car_speed = 0.12f;
             min_log_speed = 0.025f;
@@ -139,12 +149,14 @@ class LeaperGame : public BasicAbstractGame {
 
         // road
         bottom_road_y = choose_extra_space() + 1;
-
-        int max_diff = options.distribution_mode == EasyMode ? 3 : 4;
+        if (options.distribution_mode == EasybgMode){
+            background_index = 0;
+        }
+        int max_diff = (options.distribution_mode == EasyMode || options.distribution_mode == EasybgMode || options.distribution_mode == Easybg_testMode) ? 3 : 4;
         int difficulty = rand_gen.randn(max_diff + 1);
 
         // half the time we add an extra lane to either roads or water
-        int extra_lane_option = options.distribution_mode == EasyMode ? 0 : rand_gen.randn(4);
+        int extra_lane_option = (options.distribution_mode == EasyMode || options.distribution_mode == EasybgMode || options.distribution_mode == Easybg_testMode) ? 0 : rand_gen.randn(4);
 
         int num_road_lanes = difficulty + (extra_lane_option == 2 ? 1 : 0);
         road_lane_speeds.clear();
@@ -275,6 +287,24 @@ class LeaperGame : public BasicAbstractGame {
             step_data.done = true;
         }
     }
+
+    void serialize(WriteBuffer *b) override {
+        BasicAbstractGame::serialize(b);
+        b->write_int(bottom_road_y);
+        b->write_vector_float(road_lane_speeds);
+        b->write_int(bottom_water_y);
+        b->write_vector_float(water_lane_speeds);
+        b->write_int(goal_y);
+    }
+
+    void deserialize(ReadBuffer *b) override {
+        BasicAbstractGame::deserialize(b);
+        bottom_road_y = b->read_int();
+        road_lane_speeds = b->read_vector_float();
+        bottom_water_y = b->read_int();
+        water_lane_speeds = b->read_vector_float();
+        goal_y = b->read_int();
+    }
 };
 
-REGISTER_GAME("leaper", LeaperGame);
+REGISTER_GAME(NAME, LeaperGame);

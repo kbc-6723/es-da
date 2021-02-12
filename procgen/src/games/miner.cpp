@@ -3,6 +3,8 @@
 #include <set>
 #include <queue>
 
+const std::string NAME = "miner";
+
 const float COMPLETION_BONUS = 10.0;
 const int DIAMOND_REWARD = 1.0;
 
@@ -18,10 +20,10 @@ const int OOB_WALL = 10;
 
 class MinerGame : public BasicAbstractGame {
   public:
-    int diamonds_remaining;
+    int diamonds_remaining = 0;
 
     MinerGame()
-        : BasicAbstractGame() {
+        : BasicAbstractGame(NAME) {
         main_width = 20;
         main_height = 20;
 
@@ -34,10 +36,14 @@ class MinerGame : public BasicAbstractGame {
     }
 
     void load_background_images() override {
-        main_bg_images_ptr = &platform_backgrounds;
+        if(options.distribution_mode == Easybg_testMode){
+            main_bg_images_ptr = &platform_backgrounds_test;
+        } else{
+            main_bg_images_ptr = &platform_backgrounds;
+        }
     }
 
-    void asset_for_type(int type, std::vector<QString> &names) override {
+    void asset_for_type(int type, std::vector<std::string> &names) override {
         if (type == PLAYER) {
             names.push_back("misc_assets/robot_greenDrive1.png");
         } else if (type == BOULDER) {
@@ -115,7 +121,7 @@ class MinerGame : public BasicAbstractGame {
     void choose_world_dim() override {
         int dist_diff = options.distribution_mode;
 
-        if (dist_diff == EasyMode) {
+        if (dist_diff == EasyMode || dist_diff == EasybgMode || dist_diff == Easybg_testMode) {
             main_width = 10;
             main_height = 10;
         } else if (dist_diff == HardMode) {
@@ -132,7 +138,9 @@ class MinerGame : public BasicAbstractGame {
 
         agent->rx = .5;
         agent->ry = .5;
-
+        if (options.distribution_mode == EasybgMode){
+            background_index = 0;
+        }
         int main_area = main_height * main_width;
 
         options.center_agent = options.distribution_mode == MemoryMode;
@@ -140,7 +148,7 @@ class MinerGame : public BasicAbstractGame {
 
         float diamond_pct = 12 / 400.0f;
         float boulder_pct = 80 / 400.0f;
-
+        
         int num_diamonds = (int)(diamond_pct * grid_size);
         int num_boulders = (int)(boulder_pct * grid_size);
 
@@ -310,6 +318,16 @@ class MinerGame : public BasicAbstractGame {
             }
         }
     }
+
+    void serialize(WriteBuffer *b) override {
+        BasicAbstractGame::serialize(b);
+        b->write_int(diamonds_remaining);
+    }
+
+    void deserialize(ReadBuffer *b) override {
+        BasicAbstractGame::deserialize(b);
+        diamonds_remaining = b->read_int();
+    }
 };
 
-REGISTER_GAME("miner", MinerGame);
+REGISTER_GAME(NAME, MinerGame);

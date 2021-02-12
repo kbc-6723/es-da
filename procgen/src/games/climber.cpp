@@ -4,6 +4,8 @@
 #include <queue>
 #include "../mazegen.h"
 
+const std::string NAME = "climber";
+
 const float COIN_REWARD = 1.0f;
 const float COMPLETION_BONUS = 10.0f;
 
@@ -26,22 +28,30 @@ const int NUM_WALL_THEMES = 4;
 
 class Climber : public BasicAbstractGame {
   public:
-    std::shared_ptr<Entity> goal;
-    int world_len;
-    bool has_support, facing_right;
-    int coin_quota, coins_collected, wall_theme;
-    float gravity, air_control;
+    bool has_support = false;
+    bool facing_right = false;
+    int coin_quota = 0;
+    int coins_collected = 0;
+    int wall_theme = 0;
+    float gravity = 0.0f;
+    float air_control = 0.0f;
 
     Climber()
-        : BasicAbstractGame() {
+        : BasicAbstractGame(NAME) {
         out_of_bounds_object = WALL_MID;
     }
 
     void load_background_images() override {
-        main_bg_images_ptr = &platform_backgrounds;
+        if(options.distribution_mode == Easybg_testMode){
+            main_bg_images_ptr = &platform_backgrounds_test;
+        } else if (options.distribution_mode == Easy_testMode){
+            main_bg_images_ptr = &topdown_backgrounds;
+        } else{
+            main_bg_images_ptr = &platform_backgrounds;
+        }
     }
 
-    void asset_for_type(int type, std::vector<QString> &names) override {
+    void asset_for_type(int type, std::vector<std::string> &names) override {
         if (type == PLAYER) {
             names.push_back("platformer/playerBlue_stand.png");
             names.push_back("platformer/playerGreen_stand.png");
@@ -177,8 +187,7 @@ class Climber : public BasicAbstractGame {
         int curr_y = 0;
 
         int margin_x = 3;
-        float enemy_prob = options.distribution_mode == EasyMode ? .2 : .5;
-
+        float enemy_prob = (options.distribution_mode == EasyMode || options.distribution_mode == EasybgMode || options.distribution_mode == Easybg_testMode || options.distribution_mode == Easy_testMode) ? .2 : .5;
         for (int i = 0; i < num_platforms; i++) {
             int delta_y = choose_delta_y();
 
@@ -224,7 +233,7 @@ class Climber : public BasicAbstractGame {
     }
 
     void choose_world_dim() override {
-        main_width = options.distribution_mode == EasyMode ? 16 : 20;
+        main_width = (options.distribution_mode == EasyMode || options.distribution_mode == EasybgMode || options.distribution_mode == Easybg_testMode || options.distribution_mode == Easy_testMode) ? 16 : 20;
         main_height = 64;
     }
 
@@ -243,8 +252,18 @@ class Climber : public BasicAbstractGame {
 
         agent->x = 1 + agent->rx;
         agent->y = 1 + agent->ry;
-        choose_random_theme(agent);
-        wall_theme = rand_gen.randn(NUM_WALL_THEMES);
+        if (options.distribution_mode == EasybgMode) {
+            agent->image_theme = 0;
+            wall_theme = 0;
+            background_index = 0;
+        } else if(options.distribution_mode == Easybg_testMode){
+            agent->image_theme = 0;
+            wall_theme = 0;
+           
+        } else {
+            choose_random_theme(agent);
+            wall_theme = rand_gen.randn(NUM_WALL_THEMES);
+        }
 
         init_floor_and_walls();
         generate_platforms();
@@ -312,6 +331,28 @@ class Climber : public BasicAbstractGame {
             step_data.level_complete = true;
         }
     }
+
+    void serialize(WriteBuffer *b) override {
+        BasicAbstractGame::serialize(b);
+        b->write_bool(has_support);
+        b->write_bool(facing_right);
+        b->write_int(coin_quota);
+        b->write_int(coins_collected);
+        b->write_int(wall_theme);
+        b->write_float(gravity);
+        b->write_float(air_control);
+    }
+
+    void deserialize(ReadBuffer *b) override {
+        BasicAbstractGame::deserialize(b);
+        has_support = b->read_bool();
+        facing_right = b->read_bool();
+        coin_quota = b->read_int();
+        coins_collected = b->read_int();
+        wall_theme = b->read_int();
+        gravity = b->read_float();
+        air_control = b->read_float();
+    }
 };
 
-REGISTER_GAME("climber", Climber);
+REGISTER_GAME(NAME, Climber);

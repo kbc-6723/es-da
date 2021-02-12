@@ -3,6 +3,8 @@
 #include <set>
 #include <queue>
 
+const std::string NAME = "fruitbot";
+
 const float COMPLETION_BONUS = 10.0;
 const int POSITIVE_REWARD = 1.0f;
 const int PENALTY = -4.0f;
@@ -22,12 +24,12 @@ const float DOOR_ASPECT_RATIO = 3.25;
 
 class FruitBotGame : public BasicAbstractGame {
   public:
-    float min_dim;
-    float bullet_vscale;
-    int last_fire_time;
+    float min_dim = 0.0f;
+    float bullet_vscale = 0.0f;
+    int last_fire_time = 0;
 
     FruitBotGame()
-        : BasicAbstractGame() {
+        : BasicAbstractGame(NAME) {
         mixrate = .5;
         maxspeed = 0.85f;
 
@@ -39,10 +41,16 @@ class FruitBotGame : public BasicAbstractGame {
     }
 
     void load_background_images() override {
-        main_bg_images_ptr = &topdown_backgrounds;
+        if (options.distribution_mode == Easybg_testMode){
+            main_bg_images_ptr = &topdown_backgrounds_test;
+        }
+        else{
+            main_bg_images_ptr = &topdown_backgrounds;
+        }
+        
     }
 
-    void asset_for_type(int type, std::vector<QString> &names) override {
+    void asset_for_type(int type, std::vector<std::string> &names) override {
         if (type == PLAYER) {
             names.push_back("misc_assets/robot_3Dblue.png");
         } else if (type == BARRIER || type == OUT_OF_BOUNDS_WALL) {
@@ -68,9 +76,9 @@ class FruitBotGame : public BasicAbstractGame {
         } else if (type == LOCK) {
             names.push_back("misc_assets/lockRed2.png");
         } else if (type == PRESENT) {
-            names.push_back("misc_assets/present1");
-            names.push_back("misc_assets/present2");
-            names.push_back("misc_assets/present3");
+            names.push_back("misc_assets/present1.png");
+            names.push_back("misc_assets/present2.png");
+            names.push_back("misc_assets/present3.png");
         }
     }
 
@@ -121,10 +129,12 @@ class FruitBotGame : public BasicAbstractGame {
                 src->will_erase = true;
                 target->will_erase = true;
 
-                auto door = target->relative.lock();
-
-                if (door) {
-                    door->will_erase = true;
+                // find and erase the corresponding door entity
+                for (auto ent : entities) {
+                    if (ent->type == LOCKED_DOOR && fabs(ent->y - target->y) < 1) {
+                        ent->will_erase = true;
+                        break;
+                    }
                 }
             }
         }
@@ -141,7 +151,7 @@ class FruitBotGame : public BasicAbstractGame {
     }
 
     void choose_world_dim() override {
-        if (options.distribution_mode == EasyMode) {
+        if (options.distribution_mode == EasyMode || options.distribution_mode == EasybgMode || options.distribution_mode == Easybg_testMode) {
             main_width = 10;
         } else {
             main_width = 20;
@@ -185,10 +195,8 @@ class FruitBotGame : public BasicAbstractGame {
             float lock_x = w1 + lock_rx + is_on_right * (gapw - 2 * lock_rx);
             float door_x = w1 + gapw / 2 - (is_on_right * 2 - 1) * lock_rx;
 
-            auto door = add_entity_rxy(door_x, ry, 0, 0, gapw / 2 - lock_rx, wall_ry, LOCKED_DOOR);
-
-            auto lock = add_entity_rxy(lock_x, ry - lock_ry + wall_ry, 0, 0, lock_rx, lock_ry, LOCK);
-            lock->relative = door;
+            add_entity_rxy(door_x, ry, 0, 0, gapw / 2 - lock_rx, wall_ry, LOCKED_DOOR);
+            add_entity_rxy(lock_x, ry - lock_ry + wall_ry, 0, 0, lock_rx, lock_ry, LOCK);
         }
     }
 
@@ -204,7 +212,7 @@ class FruitBotGame : public BasicAbstractGame {
         float door_prob = .125;
         float min_pct = .1;
 
-        if (options.distribution_mode == EasyMode) {
+        if (options.distribution_mode == EasyMode || options.distribution_mode == EasybgMode || options.distribution_mode == Easybg_testMode) {
             num_walls = 5;
             object_group_size = 2;
             door_prob = 0;
@@ -223,7 +231,9 @@ class FruitBotGame : public BasicAbstractGame {
 
             add_walls(curr_h, use_door, min_pct);
         }
-
+        if (options.distribution_mode == EasybgMode){
+            background_index = 0;
+        }
         agent->y = agent->ry;
 
         int num_good = rand_gen.randn(10) + 10;
@@ -259,6 +269,20 @@ class FruitBotGame : public BasicAbstractGame {
             last_fire_time = cur_time;
         }
     }
+
+    void serialize(WriteBuffer *b) override {
+        BasicAbstractGame::serialize(b);
+        b->write_float(min_dim);
+        b->write_float(bullet_vscale);
+        b->write_int(last_fire_time);
+    }
+
+    void deserialize(ReadBuffer *b) override {
+        BasicAbstractGame::deserialize(b);
+        min_dim = b->read_float();
+        bullet_vscale = b->read_float();
+        last_fire_time = b->read_int();
+    }
 };
 
-REGISTER_GAME("fruitbot", FruitBotGame);
+REGISTER_GAME(NAME, FruitBotGame);

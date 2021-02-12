@@ -3,10 +3,11 @@
 #include <set>
 #include <queue>
 
+const std::string NAME = "dodgeball";
+
 const float COMPLETION_BONUS = 10.0;
 
 const int LAVA_WALL = 1;
-const int PLAYER_ASSET_TYPE = 2;
 const int PLAYER_BALL = 3;
 const int ENEMY = 4;
 const int DOOR = 5;
@@ -25,12 +26,16 @@ const float BALL_V_ROT = PI * 0.23f;
 class DodgeballGame : public BasicAbstractGame {
   public:
     std::vector<QRectF> rooms;
-    float min_dim, hard_min_dim;
-    float ball_vscale, ball_r;
-    int last_fire_time, num_enemies, enemy_fire_delay;
+    float min_dim = 0.0f;
+    float hard_min_dim = 0.0f;
+    float ball_vscale = 0.0f;
+    float ball_r = 0.0f;
+    int last_fire_time = 0;
+    int num_enemies = 0;
+    int enemy_fire_delay = 0;
 
     DodgeballGame()
-        : BasicAbstractGame() {
+        : BasicAbstractGame(NAME) {
         mixrate = .5;
 
         enemy_fire_delay = 50;
@@ -39,26 +44,30 @@ class DodgeballGame : public BasicAbstractGame {
     }
 
     void load_background_images() override {
-        main_bg_images_ptr = &topdown_backgrounds;
+        if (options.distribution_mode == Easybg_testMode){
+            main_bg_images_ptr = &topdown_backgrounds_test;
+        } else{
+            main_bg_images_ptr = &topdown_backgrounds;
+        }
     }
 
-    void asset_for_type(int type, std::vector<QString> &names) override {
-        if (type == PLAYER_ASSET_TYPE) {
-            names.push_back(QString("misc_assets/character12.png"));
+    void asset_for_type(int type, std::vector<std::string> &names) override {
+        if (type == PLAYER) {
+            names.push_back("misc_assets/character12.png");
         } else if (type == PLAYER_BALL) {
             names.push_back("misc_assets/ball_soccer1.png");
         } else if (type == ENEMY) {
-            names.push_back(QString("misc_assets/character1.png"));
-            names.push_back(QString("misc_assets/character2.png"));
-            names.push_back(QString("misc_assets/character3.png"));
-            names.push_back(QString("misc_assets/character4.png"));
-            names.push_back(QString("misc_assets/character5.png"));
-            names.push_back(QString("misc_assets/character6.png"));
-            names.push_back(QString("misc_assets/character7.png"));
-            names.push_back(QString("misc_assets/character8.png"));
-            names.push_back(QString("misc_assets/character9.png"));
-            names.push_back(QString("misc_assets/character10.png"));
-            names.push_back(QString("misc_assets/character11.png"));
+            names.push_back("misc_assets/character1.png");
+            names.push_back("misc_assets/character2.png");
+            names.push_back("misc_assets/character3.png");
+            names.push_back("misc_assets/character4.png");
+            names.push_back("misc_assets/character5.png");
+            names.push_back("misc_assets/character6.png");
+            names.push_back("misc_assets/character7.png");
+            names.push_back("misc_assets/character8.png");
+            names.push_back("misc_assets/character9.png");
+            names.push_back("misc_assets/character10.png");
+            names.push_back("misc_assets/character11.png");
         } else if (type == DOOR) {
             names.push_back("misc_assets/blockRed.png");
         } else if (type == ENEMY_BALL) {
@@ -83,9 +92,7 @@ class DodgeballGame : public BasicAbstractGame {
     }
 
     int image_for_type(int type) override {
-        if (type == PLAYER) {
-            return PLAYER_ASSET_TYPE;
-        } else if (type == DOOR) {
+        if (type == DOOR) {
             return num_enemies == 0 ? DOOR_OPEN : DOOR;
         }
 
@@ -273,7 +280,7 @@ class DodgeballGame : public BasicAbstractGame {
         int num_iterations;
         int max_extra_enemies = 3;
 
-        if (distribution_mode == EasyMode) {
+        if (distribution_mode == EasyMode || distribution_mode == EasybgMode || distribution_mode == Easybg_testMode) {
             num_iterations = 2;
             thickness *= 2;
             enemy_r *= 2;
@@ -328,7 +335,9 @@ class DodgeballGame : public BasicAbstractGame {
         float doorlen = 2 * exit_r;
 
         int exit_wall_choice = rand_gen.randn(4);
-
+        if (distribution_mode == EasybgMode || distribution_mode == Easybg_testMode){
+            exit_wall_choice = 0;
+        }
         if (exit_wall_choice == 0) {
             spawn_entity_rxy(doorlen / 2, exit_r, DOOR, 2 * border_r, 2 * border_r, main_width - 4 * border_r, 2 * exit_r);
         } else if (exit_wall_choice == 1) {
@@ -346,7 +355,13 @@ class DodgeballGame : public BasicAbstractGame {
         spawn_entities(num_enemies, enemy_r, ENEMY, 0, 0, main_width, main_height);
 
         int enemy_theme = rand_gen.randn(NUM_ENEMY_THEMES);
-
+        
+        if (distribution_mode == EasybgMode || distribution_mode == Easybg_testMode){
+            enemy_theme = 0;
+        }
+        if (distribution_mode == EasybgMode){
+            background_index = 0;
+        }
         for (auto ent : entities) {
             if (ent->type == ENEMY) {
                 ent->image_theme = enemy_theme;
@@ -439,6 +454,28 @@ class DodgeballGame : public BasicAbstractGame {
 
         erase_if_needed();
     }
+
+    void serialize(WriteBuffer *b) override {
+        BasicAbstractGame::serialize(b);
+        b->write_float(min_dim);
+        b->write_float(hard_min_dim);
+        b->write_float(ball_vscale);
+        b->write_float(ball_r);
+        b->write_int(last_fire_time);
+        b->write_int(num_enemies);
+        b->write_int(enemy_fire_delay);
+    }
+
+    void deserialize(ReadBuffer *b) override {
+        BasicAbstractGame::deserialize(b);
+        min_dim = b->read_float();
+        hard_min_dim = b->read_float();
+        ball_vscale = b->read_float();
+        ball_r = b->read_float();
+        last_fire_time = b->read_int();
+        num_enemies = b->read_int();
+        enemy_fire_delay = b->read_int();
+    }
 };
 
-REGISTER_GAME("dodgeball", DodgeballGame);
+REGISTER_GAME(NAME, DodgeballGame);

@@ -5,50 +5,94 @@ import torch.nn as nn
 import numbers
 import random
 import time
-#import kornia
-
+import kornia
+import copy
 from skimage.util.shape import view_as_windows
 from skimage.transform import resize
 
-class RandGray(object):
+class Grayscale(object):
+    """
+    Grayscale Augmentation
+    """
     def __init__(self,  
                  batch_size, 
-                 p_rand=1,
+                 p_rand,
+                 *_args, 
+                 **_kwargs):
+        self.p_rand = p_rand
+        self.batch_size = batch_size
+        self.transform = kornia.color.gray.RgbToGrayscale()
+        self._device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.random_inds = np.random.choice([True, False], 
+                                            batch_size, 
+                                            p=[self.p_rand, 1 - self.p_rand])
+    def grayscale(self,x):
+        x = np.transpose(x, (0, 3, 1, 2))
+        x = torch.from_numpy(x).to(self._device).float()
+
+        x_copy = x.clone()
+        x_copy = self.transform(x_copy)
+        x_copy = x_copy.repeat([1,3,1,1])
+        return np.transpose(x_copy.cpu().numpy().astype(np.int64), (0, 2, 3, 1))
+    def do_augmentation(self, x):
+        if self.random_inds.sum() > 0:
+            x[self.random_inds] =  self.grayscale(x[self.random_inds])
+
+        return x
+
+    def change_randomization_params(self, index_):
+        pass
+
+    def change_randomization_params_all(self):
+        pass
+
+    def print_parms(self):
+        pass
+
+        
+class Cutout(object):
+    """
+    Cutout Augmentation
+    """
+    def __init__(self, 
+                 batch_size, 
+                 box_min=7, 
+                 box_max=22, 
+                 pivot_h=12, 
+                 pivot_w=24,
                  *_args, 
                  **_kwargs):
         
-        self.p_gray = p_rand
+        self.box_min = box_min
+        self.box_max = box_max
+        self.pivot_h = pivot_h
+        self.pivot_w = pivot_w
         self.batch_size = batch_size
-        self.random_inds = np.random.choice([True, False], 
-                                            batch_size, 
-                                            p=[self.p_gray, 1 - self.p_gray])
+        self.w1 = np.random.randint(self.box_min, self.box_max, batch_size)
+        self.h1 = np.random.randint(self.box_min, self.box_max, batch_size)
         
-    def grayscale(self, imgs):
-        # imgs: b x h x w x c
-        b, h, w, c = imgs.shape
-        imgs = imgs[:, :, :, 0] * 0.2989 + imgs[:, :, :, 1] * 0.587 + imgs[:, :, :, 2] * 0.114 
-        imgs = np.tile(imgs.reshape(b,h,w,-1), (1, 1, 1, 3)).astype(np.uint8)
-        return imgs
-
-    def do_augmentation(self, images):
-        # images: [B, C, H, W]
-        bs, channels, h, w = images.shape    
-        if self.random_inds.sum() > 0:
-            images[self.random_inds] =  self.grayscale(images[self.random_inds])
-
-        return images
+    def do_augmentation(self, imgs):
+        n, c, h, w = imgs.shape
+        cutouts = torch.empty((n, c, h, w), dtype=imgs.dtype, device=imgs.device)
+        for i, (img, w11, h11) in enumerate(zip(imgs, self.w1, self.h1)):
+            cut_img = img.clone()
+            cut_img[:, 
+                    self.pivot_h+h11:self.pivot_h+h11+h11, 
+                    self.pivot_w+w11:self.pivot_w+w11+w11] = 0
+            cutouts[i] = cut_img
+        return cutouts
     
     def change_randomization_params(self, index_):
-        self.random_inds[index_] = np.random.choice([True, False], 1, 
-                                                    p=[self.p_gray, 1 - self.p_gray])
-        
+        self.w1[index_] = np.random.randint(self.box_min, self.box_max)
+        self.h1[index_] = np.random.randint(self.box_min, self.box_max)
+
     def change_randomization_params_all(self):
-        self.random_inds = np.random.choice([True, False], 
-                                            self.batch_size, 
-                                            p=[self.p_gray, 1 - self.p_gray])
+        self.w1 = np.random.randint(self.box_min, self.box_max, self.batch_size)
+        self.h1 = np.random.randint(self.box_min, self.box_max, self.batch_size)
         
     def print_parms(self):
-        print(self.random_inds)
+        print(self.w1)
+        print(self.h1)
         
         
 class Cutout(object):
@@ -144,7 +188,7 @@ class Cutout_Color(object):
 class Rand_Flip(object):
     def __init__(self,  
                  batch_size, 
-                 p_rand=0.5,
+                 p_rand=1,
                  *_args, 
                  **_kwargs):
         
@@ -197,44 +241,7 @@ class Rand_Rotate(object):
     def print_parms(self):
         print(self.random_inds)
         
-class Rand_Crop(object):
-    def __init__(self,  
-                 batch_size, 
-                 *_args, 
-                 **_kwargs):
         
-        self.batch_size = batch_size
-        self.crop_size = 64
-        self.crop_max = 75 - self.crop_size
-        self.w1 = np.random.randint(0, self.crop_max, self.batch_size)
-        self.h1 = np.random.randint(0, self.crop_max, self.batch_size)
-                
-    def do_augmentation(self, imgs):
-        # batch size
-        n = imgs.shape[0]
-        img_size = imgs.shape[1]
-        imgs = np.transpose(imgs, (0, 2, 1, 3))
-        
-        # creates all sliding windows combinations of size (output_size)
-        windows = view_as_windows(
-            imgs, (1, self.crop_size, self.crop_size, 1))[..., 0,:,:, 0]
-        # selects a random window for each batch element
-        cropped_imgs = windows[np.arange(n), self.w1, self.h1]
-        cropped_imgs = np.swapaxes(cropped_imgs,1,3)
-        return cropped_imgs
-    
-    def change_randomization_params(self, index_):
-        self.w1[index_] = np.random.randint(0, self.crop_max)
-        self.h1[index_] = np.random.randint(0, self.crop_max)
-
-    def change_randomization_params_all(self):
-        self.w1 = np.random.randint(0, self.crop_max, self.batch_size)
-        self.h1 = np.random.randint(0, self.crop_max, self.batch_size)
-    
-    def print_parms(self):
-        print(self.w1)
-        print(self.h1)
-'''        
 class Crop(object):
     """
     Crop Augmentation
@@ -251,7 +258,7 @@ class Crop(object):
         aug_trans = nn.Sequential(nn.ReplicationPad2d(12),
                             kornia.augmentation.RandomCrop((64, 64)))
                             
-        return np.transpose(aug_trans(x), (0, 2, 3, 1))
+        return np.transpose(aug_trans(x).cpu().numpy().astype(np.int64), (0, 2, 3, 1))
 
     def change_randomization_params(self, index_):
         pass
@@ -262,30 +269,6 @@ class Crop(object):
     def print_parms(self):
         pass
 
-'''
-class Center_Crop(object):
-    def __init__(self, 
-                 *_args, 
-                 **_kwargs):
-        self.crop_size = 64
-    
-    def do_augmentation(self, image):
-        h, w = image.shape[1], image.shape[2]
-        new_h, new_w = self.crop_size, self.crop_size
-
-        top = (h - new_h)//2
-        left = (w - new_w)//2
-        image = image[:, top:top + new_h, left:left + new_w, :]
-        return image.copy()
-    
-    def change_randomization_params(self, index_):
-        index_ = index_
-        
-    def change_randomization_params_all(self):
-        index_ = 0
-    
-    def print_parms(self):
-        print('nothing')
 
 class RandomConv(object):
     """
@@ -318,8 +301,13 @@ class RandomConv(object):
                 total_out = rand_out
             else:
                 total_out = torch.cat((total_out, rand_out), 0)
-        
-        return np.transpose(total_out.cpu().detach().numpy(), (0, 2, 3, 1))
+        out = np.transpose(total_out.cpu().detach().numpy(), (0, 2, 3, 1))
+        del x
+        del total_out
+        del rand_out
+        del temp_x 
+        torch.cuda.empty_cache()
+        return out.astype(np.int64)
 
     def change_randomization_params(self, index_):
         pass
@@ -329,7 +317,7 @@ class RandomConv(object):
 
     def print_parms(self):
         pass
-        
+
 class ColorJitterLayer(nn.Module):
     def __init__(self, 
                  batch_size,
@@ -337,7 +325,7 @@ class ColorJitterLayer(nn.Module):
                  contrast=0.4,
                  saturation=0.4, 
                  hue=0.5,
-                 p_rand=1.0,
+                 p_rand=1,
                  stack_size=1, 
                  *_args,
                  **_kwargs):
@@ -349,22 +337,23 @@ class ColorJitterLayer(nn.Module):
                                      clip_first_on_zero=False)
         
         self.prob = p_rand
+        self.random_inds = np.random.choice([True, False], batch_size, p=[self.prob, 1 - self.prob])
         self.batch_size = batch_size
         self.stack_size = stack_size
         self._device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 #         self._device = torch.device('cpu')
     
         # random paramters
-        factor_contrast = torch.empty(self.batch_size, device=self._device).uniform_(*self.contrast)
+        factor_contrast = torch.empty(self.random_inds.sum(), device=self._device).uniform_(*self.contrast)
         self.factor_contrast = factor_contrast.reshape(-1,1).repeat(1, self.stack_size).reshape(-1)
         
-        factor_hue = torch.empty(self.batch_size, device=self._device).uniform_(*self.hue)
+        factor_hue = torch.empty(self.random_inds.sum(), device=self._device).uniform_(*self.hue)
         self.factor_hue = factor_hue.reshape(-1,1).repeat(1, self.stack_size).reshape(-1)
         
-        factor_brightness = torch.empty(self.batch_size, device=self._device).uniform_(*self.brightness)
+        factor_brightness = torch.empty(self.random_inds.sum(), device=self._device).uniform_(*self.brightness)
         self.factor_brightness = factor_brightness.reshape(-1,1).repeat(1, self.stack_size).reshape(-1)
         
-        factor_saturate = torch.empty(self.batch_size, device=self._device).uniform_(*self.saturation)
+        factor_saturate = torch.empty(self.random_inds.sum(), device=self._device).uniform_(*self.saturation)
         self.factor_saturate = factor_saturate.reshape(-1,1).repeat(1, self.stack_size).reshape(-1)
         
 
@@ -461,7 +450,7 @@ class ColorJitterLayer(nn.Module):
         outputs = self.forward(inputs)
         outputs = outputs.data.cpu().numpy() * 255.0
         outputs = np.transpose(outputs, (0, 3, 2, 1))
-        return outputs
+        return outputs.astype(np.int64)
     
     def change_randomization_params(self, index_):
         self.factor_contrast[index_] = torch.empty(1, device=self._device).uniform_(*self.contrast)
@@ -486,9 +475,9 @@ class ColorJitterLayer(nn.Module):
         print(self.factor_hue)
         
     def forward(self, inputs):
-        # batch size
-        random_inds = np.random.choice(
-            [True, False], len(inputs), p=[self.prob, 1 - self.prob])
+       
+        # batch sizec
+        random_inds = self.random_inds
         inds = torch.tensor(random_inds).to(self._device)
         if random_inds.sum() > 0:
             inputs[inds] = self.transform(inputs[inds])
