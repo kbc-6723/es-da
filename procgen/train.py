@@ -38,7 +38,7 @@ def main():
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--run_id', type=str, default=None) # save file name
     parser.add_argument('--res_id', type=str, default=None) #load file name
-    parser.add_argument('--log_dir', type=str, default='/home/kbc/pdad/')
+    parser.add_argument('--log_dir', type=str, default= None)
     parser.add_argument('--timesteps', type=int, default=25) # total_timesteps
     parser.add_argument('--use_rand_FM', default = False , action = 'store_true')
     parser.add_argument('--use_drac', default = False , action = 'store_true')
