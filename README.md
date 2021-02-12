@@ -20,7 +20,7 @@ Supported CPUs:
 - Must have at least AVX
 
 ```
-git clone git@github.com:openai/procgen.git
+git clone https://github.com/kbc-6723/Time-DA.git
 cd Time-DA
 conda env update --name time-da --file environment.yml
 conda activate time-da
