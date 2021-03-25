@@ -1,4 +1,4 @@
-# Time Matter in Using Data Augmentation in Vision-Based Reinforcement Learning
+# Time Matter in Using Data Augmentation for Vision-Based Reinforcement Learning
 
 We modified the Procgen (https://github.com/openai/procgen) to verify each generalization about change of backgrounds and levels.
 
