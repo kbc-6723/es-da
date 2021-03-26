@@ -50,8 +50,7 @@ def main():
     
     args = parser.parse_args()
     rep_count = args.rep_count
-    test_worker_interval = args.test_worker_interval
-    use_gradcam = args.use_gradcam   
+    test_worker_interval = args.test_worker_interval  
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
 
