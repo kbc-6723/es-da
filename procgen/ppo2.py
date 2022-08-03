@@ -13,7 +13,9 @@ except ImportError:
     MPI = None
 from procgen.runner import Runner
 import matplotlib.pyplot as plt
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+
 import torch
 def constfn(val):
     def f(_):
@@ -142,9 +144,38 @@ def learn(*, network, stu_network=None, env, total_timesteps, eval_env = None, s
             aug_func = rad.Cutout(nbatch, p_rand = p_rand)
         elif args.data_aug == 'cutout_color':
             aug_func = rad.Cutout_Color(nbatch, p_rand = p_rand)
+        elif args.data_aug == 'black':
+            aug_func = rad.Black(nbatch, p_rand = p_rand)
         elif args.data_aug == 'random_conv':
             if args.use_rad is False:
                 aug_func = rad.RandomConv(nbatch)
+        elif args.data_aug == 'rccj':
+                aug_func1_1 = rad.ColorJitterLayer(int(nbatch/2), p_rand = p_rand)           
+                aug_func1_2 = rad.RandomConv(int(nbatch/2)) 
+        else:
+            pass
+    
+    if args.data_aug2 is not None:
+        if args.data_aug2 == 'color_jitter':
+            aug_func2 = rad.ColorJitterLayer(nbatch, p_rand = p_rand)
+        elif args.data_aug2 == 'gray':
+            aug_func2 = rad.Grayscale(nbatch, p_rand = p_rand)
+        elif args.data_aug2 == 'flip':
+            aug_func2 = rad.Rand_Flip(nbatch, p_rand = p_rand)    
+        elif args.data_aug2 == 'rotate':
+            aug_func2 = rad.Rand_Rotate(nbatch, p_rand = p_rand)    
+        elif args.data_aug2 == 'crop':
+            aug_func2 = rad.Crop(nbatch, p_rand = p_rand)
+        elif args.data_aug2 == 'cutout':
+            aug_func2 = rad.Cutout(nbatch, p_rand = p_rand)
+        elif args.data_aug2 == 'cutout_color':
+            aug_func2 = rad.Cutout_Color(nbatch, p_rand = p_rand)
+        elif args.data_aug2 == 'random_conv':
+            if args.use_rad is False:
+                aug_func2 = rad.RandomConv(nbatch)
+        elif args.data_aug2 == 'rccj':
+                aug_func2_1 = rad.ColorJitterLayer(int(nbatch/2), p_rand = p_rand)           
+                aug_func2_2 = rad.RandomConv(int(nbatch/2)) 
         else:
             pass
             
@@ -155,6 +186,10 @@ def learn(*, network, stu_network=None, env, total_timesteps, eval_env = None, s
     saved_key_checkpoints = [False] * len(checkpoint)
 
     nupdates = total_timesteps//nbatch
+    # aug_list = [ 'rccj', None, 'crop']
+    # current_aug_id = 0
+    # current_aug = None
+
     for update in range(1, nupdates+1):
         assert nbatch % nminibatches == 0
             
@@ -172,14 +207,66 @@ def learn(*, network, stu_network=None, env, total_timesteps, eval_env = None, s
         # Get minibatch
        
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run() #pylint: disable=E0632
+
+        if args.save_obs:
+            save_idx = np.random.choice(nbatch, 100, replace = False)
+            if update == 1:
+                save_obs = obs[save_idx]
+            else:
+                save_obs = np.concatenate((save_obs, obs[save_idx]), axis = 0)
         
         if args.use_rad and args.data_aug != 'random_conv':
-            obs = aug_func.do_augmentation(obs)
+            if args.data_aug == 'rccj':
+                obs_buffer1 = np.array([obs[x :: 64] for x in range(32)])
+                obs_buffer1 = obs_buffer1.reshape(-1,64,64,3)
+               
+                obs_buffer2 = np.array([obs[x :: 64] for x in range(32,64)])
+                obs_buffer2 = obs_buffer2.reshape(-1,64,64,3)
+         
+                obs = np.concatenate((obs_buffer1, obs_buffer2), axis = 0 )
+
+                aug_obs = aug_func1_1.do_augmentation(obs[:int(nbatch/2)].copy())
+                obs = np.concatenate((aug_obs, aug_func1_2.do_augmentation(obs[int(nbatch/2):].copy())), axis = 0)
+            else:
+                obs = aug_func.do_augmentation(obs.copy())
             
         if args.use_drac:
-            aug_obs = aug_func.do_augmentation(obs)
+            if args.data_aug == 'rccj':
+                obs_buffer1 = np.array([obs[x :: 64] for x in range(32)])
+                obs_buffer1 = obs_buffer1.reshape(-1,64,64,3)
+                
+                obs_buffer2 = np.array([obs[x :: 64] for x in range(32,64)])
+                obs_buffer2 = obs_buffer2.reshape(-1,64,64,3)
+                
+                obs = np.concatenate((obs_buffer1, obs_buffer2), axis = 0 )
 
-    
+                aug_obs = aug_func1_1.do_augmentation(obs[:int(nbatch/2)].copy())
+                aug_obs = np.concatenate((aug_obs, aug_func1_2.do_augmentation(obs[int(nbatch/2):].copy())), axis = 0)
+
+                #plt.imshow(obs[8345])
+                #plt.show()
+
+                
+            else:
+                aug_obs = aug_func.do_augmentation(obs.copy())
+
+            if args.data_aug2 is not None:
+                if args.data_aug2 == 'rccj':
+                    obs_buffer1 = np.array([obs[x :: 64] for x in range(32)])
+                    obs_buffer1 = obs_buffer1.reshape(-1,64,64,3)
+                    
+                    obs_buffer2 = np.array([obs[x :: 64] for x in range(32,64)])
+                    obs_buffer2 = obs_buffer2.reshape(-1,64,64,3)
+                    
+                    obs = np.concatenate((obs_buffer1, obs_buffer2), axis = 0 )
+
+                    aug_obs = np.concatenate((aug_obs, aug_func2_1.do_augmentation(obs[:int(nbatch/2)].copy())), axis = 0)
+                    aug_obs = np.concatenate((aug_obs, aug_func2_2.do_augmentation(obs[int(nbatch/2):].copy())), axis = 0)
+                else:
+                    aug_obs = aug_func2.do_augmentation(aug_obs.copy())
+                    
+                   # plt.imshow(aug_obs[8345])
+                   # plt.show()
         # Returns = R + yV(s')
         advs = returns - values
         # Normalize the advantages
@@ -283,6 +370,12 @@ def learn(*, network, stu_network=None, env, total_timesteps, eval_env = None, s
             print('Saving to', savepath)
             model.save(savepath)
             check_index =  check_index + 1
+            
+            if args.save_obs:
+                obs_dir = osp.join(logger.get_dir(), 'saved_obs')
+                os.makedirs(obs_dir, exist_ok=True)
+                obs_path = osp.join(obs_dir, run_id)
+                np.save( obs_path, save_obs)
     '''
     f_gradient.close()
     f_loss.close()

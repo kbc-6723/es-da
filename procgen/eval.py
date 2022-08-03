@@ -1,4 +1,6 @@
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+
 from procgen import ppo2
 from procgen.nets import build_impala_cnn, build_random_impala_cnn
 from baselines.common.mpi_util import setup_mpi_gpus
@@ -10,7 +12,10 @@ from baselines.common.vec_env import (
     VecMonitor,
     VecFrameStack,
     VecNormalize,
+    VecVideoRecorder,
 )
+from gym3 import  VideoRecorderWrapper
+
 from skimage import io
 from matplotlib import pyplot as plt
 import procgen.data_augs as rad
@@ -24,12 +29,30 @@ from procgen.tf_util import load_variables
 
     
 DIR_NAME = 'test_log'
+def normalize(x):
+    x  = np.asarray(x)
+    norm = (x - np.min(x)) / (np.max(x) - np.min(x)) 
+    return norm
+
+def jsd(p, q, base=np.e):
+    '''
+        Implementation of pairwise `jsd` based on  
+        https://en.wikipedia.org/wiki/Jensen%E2%80%93Shannon_divergence
+    '''
+    ## convert to np
+    x = []
+    for ix, p_ in enumerate(p):
+        q_ = q[ix]
+        m = 1./2*(p_ + q_)
+        x.append(sp.stats.entropy(p_,m, base=base,axis = -1)/2. +  sp.stats.entropy(q_, m, base=base, axis = -1)/2.)
+
+    return x
 
 def main():
 
     parser = argparse.ArgumentParser(description='Process procgen training arguments.')
     parser.add_argument('--env_name', type=str, default='coinrun')
-    parser.add_argument('--distribution_mode', type=str, default='easy', choices=["easy", "easybg","hardbg","hard","testbg", "exploration", "memory", "extreme"])
+    parser.add_argument('--distribution_mode', type=str, default='easy', choices=["easy", "easybg","easybg_test","hardbg","hard","testbg", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=50)
     parser.add_argument('--num_envs', type=int, default=50)
     parser.add_argument('--rep_count', type=int, default=1)
@@ -45,6 +68,7 @@ def main():
     parser.add_argument('--use_record', default = False , action = 'store_true')
     parser.add_argument('--use_drac', default = False , action = 'store_true')
     parser.add_argument('--use_rad', default = False , action = 'store_true')
+    parser.add_argument('--jsd', default = False , action = 'store_true')
     parser.add_argument('--data_aug', type=str, default=None)
     
     
@@ -80,8 +104,11 @@ def main():
     if args.use_record:
         if not os.path.exists('record'):
             os.makedirs('record')
-        record_dir = 'record/' +  args.run_id
-        env = VecVideoRecorder(env, record_dir, record_video_trigger=lambda x: x % 1 == 0, video_length=500)
+        record_dir = 'record/' +  args.res_id
+        env = VideoRecorderWrapper(
+            env=env, directory=record_dir, ob_key=ob_key, info_key=info_key
+        )
+        #env = VecVideoRecorder(env, record_dir, record_video_trigger=lambda x: x % 1 == 0, video_length=500)
 
     logger.info("creating tf session")
     setup_mpi_gpus()
@@ -107,7 +134,31 @@ def main():
     
     f_io = open(file_name, 'a')
     
-        
+    if args.jsd:
+        f_jsd = open('%s/%s.txt'%(DIR_NAME, args.run_id+'_jsd'), 'w')
+    nbatch_train = args.num_envs
+    if args.data_aug is not None:
+        if args.data_aug == 'color_jitter':
+            aug_func = rad.ColorJitterLayer(nbatch_train, p_rand = 1)
+        elif args.data_aug == 'gray':
+            aug_func = rad.RandGray(nbatch_train, p_rand = 1)
+        elif args.data_aug == 'flip':
+            aug_func = rad.Rand_Flip(nbatch_train, p_rand = 1)    
+        elif args.data_aug == 'rotate':
+            aug_func = rad.Rand_Rotate(nbatch_train, p_rand = 1)    
+        elif args.data_aug == 'crop':
+            aug_func = rad.Crop(nbatch_train, p_rand = 1)
+        elif args.data_aug == 'cutout':
+            aug_func = rad.Cutout(nbatch_train, p_rand = 1)
+        elif args.data_aug == 'cutout_color':
+            aug_func = rad.Cutout_Color(nbatch_train, p_rand = 1)
+        elif args.data_aug == 'random_conv':
+            aug_func = rad.RandomConv(nbatch_train)
+        elif args.data_aug == 'conv':
+            aug_func = rad.Convfilter(nbatch_train)
+        else:
+            pass
+
     # Get the nb of env
     nenvs = env.num_envs
 
@@ -144,10 +195,20 @@ def main():
     state = agent.initial_state
     done = np.zeros(nenvs)
     
+    jsd_list = []
     
     while should_continue():        
                     
-        actions, pi , v = agent.step_eval(obs, S=state, M=done) 
+        actions, _ , _ = agent.step_eval(obs, S=state, M=done) 
+        if args.jsd:
+            pi,_ = agent.get_softmax(obs)
+            aug_obs = aug_func.do_augmentation(obs)
+            aug_pi, _ = agent.get_softmax(aug_obs)
+            print(pi)
+            print(aug_pi)
+            jsd_list.append(jsd(pi, aug_pi))
+            print(jsd_list[-1])
+            
         obs, rew, done, info = env.step(actions)    
         
             
@@ -167,7 +228,9 @@ def main():
             curr_rews[:] = 0
 
     result = 0
-
+    
+    if args.jsd: 
+        f_jsd.write(str(np.mean(np.array(jsd_list))))
     
     mean_score = np.mean(scores) / rep_count
     max_idx = np.argmax(scores)

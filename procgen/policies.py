@@ -1,4 +1,6 @@
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+
 from procgen import tf_util
 from baselines.a2c.utils import fc
 from procgen.distributions import make_pdtype

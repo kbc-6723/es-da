@@ -1,4 +1,6 @@
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+
 from procgen import ppo2
 from procgen.nets import build_impala_cnn
 from baselines.common.mpi_util import setup_mpi_gpus
@@ -54,10 +56,12 @@ def main():
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--run_id', type=str, default=None) # save file name
     parser.add_argument('--res_id', type=str, default=None) #load file name
-    parser.add_argument('--log_dir', type=str, default=None)
+    parser.add_argument('--res_id2', type=str, default=None) #load file name
+    parser.add_argument('--log_dir', type=str, default='/home/kbc/pdad/')
     parser.add_argument('--epochs', type=int, default=10) # total_update
     parser.add_argument('--use_vdf', default = False , action = 'store_true') #value distance functinon
     parser.add_argument('--reinit', default = False , action = 'store_true')
+    parser.add_argument('--saved_obs', default = False , action = 'store_true')
     parser.add_argument('--data_aug', type=str, default=None)
    
     
@@ -128,13 +132,22 @@ def main():
     # Get state_space and action_space
     ob_space = env.observation_space
     ac_space = env.action_space
-
-    # Instantiate the model object (that creates act_model and train_model)
-    run_step = args.buffer_size // (nenvs * nsteps)
-  
-    nbatch = nenvs * nsteps * run_step
     batch_aug = nenvs * nsteps 
-   
+    if args.saved_obs:
+        obs_path = args.log_dir + 'saved_obs/' + args.res_id2 + '.npy'
+        saved_obs = np.load(obs_path)
+        num_saved_obs = saved_obs.shape[0]
+        trash_obs = num_saved_obs % batch_aug
+        saved_obs = saved_obs[0:-1 * trash_obs]
+        num_saved_obs = saved_obs.shape[0]
+        print(num_saved_obs)
+        run_step = (args.buffer_size - num_saved_obs) // batch_aug
+        total_run_step = args.buffer_size // batch_aug
+    else:
+        run_step = args.buffer_size  // batch_aug
+        total_run_step = run_step
+
+    nbatch = batch_aug * total_run_step
         
     nbatch_train = nbatch // nminibatches 
     
@@ -160,6 +173,8 @@ def main():
             aug_func = rad.Cutout_Color(batch_aug, p_rand = 1)
         elif args.data_aug == 'random_conv':
             aug_func = rad.RandomConv(batch_aug)
+        elif args.data_aug == 'black':
+            aug_func = rad.Black(batch_aug, p_rand = 1)
         else:
             pass
         nbatch = nbatch * 2
@@ -179,7 +194,10 @@ def main():
     for i in range(run_step):
         obs, epinfos = runner.run()
         if i == 0:
-            obs_buffer = obs            
+            if args.saved_obs:
+                obs_buffer = np.concatenate((saved_obs,obs),axis = 0)
+            else:
+                obs_buffer = obs            
         else:
             obs_buffer = np.concatenate((obs_buffer,obs),axis = 0)
         epinfobuf.extend(epinfos)
@@ -187,6 +205,8 @@ def main():
         target_eplenmean  = safemean([epinfo['l'] for epinfo in epinfobuf])
     print("complete storing in buffer")     
     
+    
+
     for i in range(nminibatches):
         if i == 0:
             policy_buffer = model.pi(obs_buffer[i*nbatch_train:(i+1)*nbatch_train])
@@ -196,16 +216,23 @@ def main():
     if args.reinit:
         model.initialize()
     if args.data_aug is not None:     
-        if args.data_aug is 'color_jitter' or args.data_aug is 'gray':       
-            for i  in range(run_step):
+        if args.data_aug == 'color_jitter' or args.data_aug == 'gray':       
+            for i  in range(total_run_step):
                 if i == 0:
                     aug_obs = np.concatenate((obs_buffer, aug_func.do_augmentation(obs_buffer[i*batch_aug:(i+1)*batch_aug])),axis = 0)
                 else:
                     aug_obs = np.concatenate((aug_obs, aug_func.do_augmentation(obs_buffer[i*batch_aug:(i+1)*batch_aug])),axis = 0)
 
     nupdates = int(args.epochs / args.aug_interval)
+    print('nbatch')
     print(nbatch)
+    print('obs_buffer')
+    print(obs_buffer.shape[0])
+    print('policy')
+    print(policy_buffer.shape[0])
     current_epoch = 1
+
+
     for update in range(1, nupdates+1):
        
         frac = 1.0 - (update - 1.0) / nupdates
@@ -223,21 +250,19 @@ def main():
 
             
         if args.data_aug is not None:    
-            if args.data_aug is not 'color_jitter' and args.data_aug is not 'gray':           
-                for i  in range(run_step):
+            if args.data_aug != 'color_jitter' and args.data_aug != 'gray':           
+                for i  in range(total_run_step):
                     if i == 0:
                         aug_obs = np.concatenate((obs_buffer, aug_func.do_augmentation(obs_buffer[i*batch_aug:(i+1)*batch_aug])),axis = 0)
                     else:
                         aug_obs = np.concatenate((aug_obs, aug_func.do_augmentation(obs_buffer[i*batch_aug:(i+1)*batch_aug])),axis = 0)
-
+        print('aug_obs')
+        print(aug_obs.shape[0])
         if update % log_interval == 0 and is_mpi_root: logger.info('Done.')
 
         
 
         # Here what we're going to do is for each minibatch calculate the loss and append it.
-        
-    
-        
          
         inds = np.arange(nbatch)
         for epoch in range(args.aug_interval):

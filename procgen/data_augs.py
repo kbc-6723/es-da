@@ -10,6 +10,33 @@ import copy
 from skimage.util.shape import view_as_windows
 from skimage.transform import resize
 
+
+class Black(object):
+    """
+    Black image Augmentation
+    """
+    def __init__(self,  
+                 batch_size, 
+                 p_rand,
+                 *_args, 
+                 **_kwargs):
+        self.p_rand = p_rand
+        self.batch_size = batch_size
+        
+    def do_augmentation(self, x):
+        img_shape = x.shape
+        return np.zeros(img_shape)
+
+
+    def change_randomization_params(self, index_):
+        pass
+
+    def change_randomization_params_all(self):
+        pass
+
+    def print_parms(self):
+        pass
+
 class Grayscale(object):
     """
     Grayscale Augmentation

@@ -35,7 +35,7 @@ class HeistGame : public BasicAbstractGame {
 
     void load_background_images() override {
         if (options.distribution_mode == Easybg_testMode){
-            main_bg_images_ptr = &topdown_backgrounds_test;
+            main_bg_images_ptr = &space_backgrounds_test;
         } else{
             main_bg_images_ptr = &topdown_backgrounds;
         }

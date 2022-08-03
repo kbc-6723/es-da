@@ -1,5 +1,6 @@
-import tensorflow as tf
-from procgen import ppo2
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+from procgen import ppo2, ucb_drac
 from procgen.nets import build_impala_cnn, build_random_impala_cnn
 from baselines.common.mpi_util import setup_mpi_gpus
 from procgen import ProcgenEnv
@@ -27,7 +28,7 @@ def main():
 
     parser = argparse.ArgumentParser(description='Process procgen training arguments.')
     parser.add_argument('--env_name', type=str, default='coinrun')
-    parser.add_argument('--distribution_mode', type=str, default='easy', choices=["easy", "hard","easybg","easy-test", "easybg-test", "exploration", "memory", "extreme"])
+    parser.add_argument('--distribution_mode', type=str, default='easybg', choices=["easy", "hard","easybg","easy-test", "easybg-test", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=200)
     parser.add_argument('--num_envs', type=int, default=64)
     parser.add_argument('--nsteps', type=int, default=256)
@@ -40,10 +41,17 @@ def main():
     parser.add_argument('--res_id', type=str, default=None) #load file name
     parser.add_argument('--log_dir', type=str, default= None)
     parser.add_argument('--timesteps', type=int, default=25) # total_timesteps
+    parser.add_argument('--ucb_coef', type=float, default=1.5)
     parser.add_argument('--use_rand_FM', default = False , action = 'store_true')
     parser.add_argument('--use_drac', default = False , action = 'store_true')
+    parser.add_argument('--use_pcgrad', default = False , action = 'store_true')
+    parser.add_argument('--use_pdtgrad', default = False , action = 'store_true')
     parser.add_argument('--use_rad', default = False , action = 'store_true')
+    parser.add_argument('--save_obs', default = False , action = 'store_true')
+    parser.add_argument('--ucb_drac', default = False , action = 'store_true')
+    parser.add_argument('--only_distill', default = False , action = 'store_true')
     parser.add_argument('--data_aug', type=str, default=None)
+    parser.add_argument('--data_aug2', type=str, default=None)
     args = parser.parse_args()
     timesteps_per_proc = (args.timesteps+1) * 1000000
     test_worker_interval = args.test_worker_interval
@@ -96,33 +104,63 @@ def main():
         stu_conv_fn = None
         
     logger.info("training")
-    ppo2.learn(
-        env=venv,
-        eval_env = eval_venv,
-        network=conv_fn,
-        stu_network = stu_conv_fn,
-        total_timesteps=timesteps_per_proc,
-        save_interval=1,
-        nsteps=args.nsteps,
-        nminibatches=args.nminibatches,
-        lam=lam,
-        gamma=gamma,
-        noptepochs=ppo_epochs,
-        log_interval=1,
-        ent_coef=ent_coef,
-        mpi_rank_weight=mpi_rank_weight,
-        clip_vf=use_vf_clipping,
-        run_id=args.run_id,
-        comm=comm,
-        load_path=args.res_id ,
-        lr=args.learning_rate,
-        cliprange=clip_range,
-        update_fn=None,
-        init_fn=None,
-        vf_coef=0.5,
-        max_grad_norm=0.5,
-        args = args
-    )
+    if args.ucb_drac:
+        ucb_drac.learn(
+            env=venv,
+            eval_env = eval_venv,
+            network=conv_fn,
+            stu_network = stu_conv_fn,
+            total_timesteps=timesteps_per_proc,
+            save_interval=1,
+            nsteps=args.nsteps,
+            nminibatches=args.nminibatches,
+            lam=lam,
+            gamma=gamma,
+            noptepochs=ppo_epochs,
+            log_interval=1,
+            ent_coef=ent_coef,
+            mpi_rank_weight=mpi_rank_weight,
+            clip_vf=use_vf_clipping,
+            run_id=args.run_id,
+            ucb_coef = args.ucb_coef,
+            comm=comm,
+            load_path=args.res_id ,
+            lr=args.learning_rate,
+            cliprange=clip_range,
+            update_fn=None,
+            init_fn=None,
+            vf_coef=0.5,
+            max_grad_norm=0.5,
+            args = args
+        )
+    else:
+        ppo2.learn(
+            env=venv,
+            eval_env = eval_venv,
+            network=conv_fn,
+            stu_network = stu_conv_fn,
+            total_timesteps=timesteps_per_proc,
+            save_interval=1,
+            nsteps=args.nsteps,
+            nminibatches=args.nminibatches,
+            lam=lam,
+            gamma=gamma,
+            noptepochs=ppo_epochs,
+            log_interval=1,
+            ent_coef=ent_coef,
+            mpi_rank_weight=mpi_rank_weight,
+            clip_vf=use_vf_clipping,
+            run_id=args.run_id,
+            comm=comm,
+            load_path=args.res_id ,
+            lr=args.learning_rate,
+            cliprange=clip_range,
+            update_fn=None,
+            init_fn=None,
+            vf_coef=0.5,
+            max_grad_norm=0.5,
+            args = args
+        )
 
 if __name__ == '__main__':
     main()
