@@ -20,10 +20,10 @@ Required Libraries
 
 ## Download Modified Procgen from Source
 ```
-git clone https://github.com/kbc-6723/Time-DA.git
-cd Time-DA
-conda env update --name time-da --file environment.yml
-conda activate time-da
+git clone https://github.com/kbc-6723/Efficient-Scheduling-of-Data-Augmentation-for-Deep-Reinforcement-Learning.git Scheduling-DA
+cd Scheduling-DA
+conda env update --name da --file environment.yml
+conda activate da
 pip install -e .
 # this should say "building procgen...done"
 python -c "from procgen import ProcgenGym3Env; ProcgenGym3Env(num=1, env_name='coinrun')"
