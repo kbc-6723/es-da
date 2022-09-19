@@ -1,4 +1,4 @@
-# Time Matter in Using Data Augmentation for Vision-Based Reinforcement Learning
+# Efficient Scheduling of Data Augmentation for Deep Reinforcment Learning (Neurips 2022)
 
 We modified the Procgen (https://github.com/openai/procgen) to verify each generalization about change of backgrounds and levels.
 
@@ -8,7 +8,7 @@ Our data augmentation methods are from RAD(https://github.com/pokaxpoka/rad_proc
 
 Required Libraries
 
-- tensorflow-gpu=1.15.0
+- tensorflow2
 - https://github.com/openai/baselines/archive/9ee399f5b20cd70ac0a871927a
 - matplotlib
 - pytorch
@@ -35,4 +35,4 @@ python -m procgen.InDA --env_name climber --distribution_mode easybg --num_level
 ## ExDA
 python -m procgen.ExDA --env_name climber --distribution_mode easybg --num_levels 200 --res_id 'pre-trained-model-path' --data_aug random_conv --run_id 'file_name' --log_dir 'your_path'
 
-Anonymous github can be cloned as https://github.com/ShoufaChen/clone-anonymous4open.
+For tensorflow2, you should modify OpenAI baselines libararies using tensorflow.compat.v1. 
