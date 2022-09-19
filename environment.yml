@@ -1,5 +1,5 @@
-channels:
-  - conda-forge
+ channels:
+   - conda-forge
 
 dependencies:
   - python=3.7.3
@@ -8,8 +8,14 @@ dependencies:
   - cmake=3.14.0
   - qt=5.12.5  # conda-forge does not have 5.13.2 available
   - pip
+  - mpi4py
   - pip:
-    - gym3==0.3.3
-    - numpy==1.17.2
-    - gym==0.15.3
-    - filelock==3.0.10
+    - gym3
+    - numpy
+    - gym
+    - filelock
+    - kornia
+    - scikit-image
+    - matplotlib
+    - tensorflow
+    - torch
