@@ -9,7 +9,7 @@ Our data augmentation methods are from RAD(https://github.com/pokaxpoka/rad_proc
 Required Libraries
 
 - tensorflow2
-- https://github.com/openai/baselines/archive/9ee399f5b20cd70ac0a871927a
+- OpenAI Baselines from https://github.com/openai/baselines/
 - matplotlib
 - pytorch
 - kornia
