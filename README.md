@@ -4,6 +4,7 @@ We modified the Procgen (https://github.com/openai/procgen) to verify each gener
 
 Our data augmentation methods are from RAD(https://github.com/pokaxpoka/rad_procgen) and Auto-DrAC (https://github.com/rraileanu/auto-drac).
 
+We will update this repo with docker image for easy setup.
 ## Modified Procgen
 
 Required Libraries
