@@ -1,5 +1,6 @@
 # Efficient Scheduling of Data Augmentation for Deep Reinforcment Learning (Neurips 2022)
 https://openreview.net/pdf?id=7KKL3Z5sod
+
 We modified the Procgen (https://github.com/openai/procgen) to verify each generalization about change of backgrounds and levels.
 
 Our data augmentation methods are from RAD(https://github.com/pokaxpoka/rad_procgen) and Auto-DrAC (https://github.com/rraileanu/auto-drac).
